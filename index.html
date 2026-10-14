@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Grade Management System</title>
+<style>
+  :root {
+    --page: #eef2f8;
+    --paper: #ffffff;
+    --ink: #1b2a49;
+    --muted: #55627f;
+    --rule: #d5e0ef;
+    --margin: #e0605a;
+    --accent: #2f5fd0;
+    --bad: #b3322c;
+    --good: #1d7347;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 56px; }
+  h1 { font: 700 2rem/1.15 Georgia, "Times New Roman", serif; margin: 0 0 4px; }
+  h2 { font: 700 1.15rem/1.3 Georgia, "Times New Roman", serif; margin: 0 0 12px; }
+  .lead { margin: 0 0 20px; color: var(--muted); max-width: 62ch; }
+
+  .sheet {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  /* The array strip: one cell per slot, filled cells are slots in use */
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(50, 1fr);
+    gap: 3px;
+    margin: 10px 0 8px;
+  }
+  .strip span {
+    aspect-ratio: 1;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    background: var(--paper);
+  }
+  .strip span.used { background: var(--ink); border-color: var(--ink); }
+  #slots { margin: 0; font-weight: 600; }
+  .hint { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .two .sheet { margin-bottom: 0; }
+  .stack { margin-bottom: 16px; }
+
+  label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+  input, select {
+    width: 100%;
+    font: inherit;
+    color: var(--ink);
+    padding: 8px 10px;
+    border: 1px solid #b7c5dc;
+    border-radius: 4px;
+    background: #fff;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .field { margin-bottom: 12px; }
+  .marks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 4px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: #fff;
+    cursor: pointer;
+  }
+  button.plain { background: #fff; color: var(--ink); }
+  button.danger { background: #fff; color: var(--bad); border-color: var(--bad); }
+  button.small { padding: 4px 10px; font-size: 0.85rem; }
+  button:hover { filter: brightness(1.12); }
+
+  #msg { min-height: 1.5em; margin: 10px 0 0; font-weight: 600; }
+  #msg.error { color: var(--bad); }
+  #msg.ok { color: var(--good); }
+
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; font-weight: 600; text-align: right; }
+
+  /* Register: ruled exercise-book page with a red margin line */
+  .register { border-left: 4px solid var(--margin); }
+  .tools { display: grid; grid-template-columns: 1fr 200px; gap: 12px; margin-bottom: 12px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  th, td { padding: 9px 10px; text-align: right; border-bottom: 1px solid var(--rule); }
+  th { font-size: 0.9rem; color: var(--muted); border-bottom: 2px solid var(--ink); }
+  th:nth-child(2), td:nth-child(2) { text-align: left; }
+  td.empty { text-align: center; color: var(--muted); padding: 28px 10px; }
+  td.grade { font-weight: 700; text-align: center; }
+  th.grade { text-align: center; }
+  td.low { color: var(--bad); }
+
+  .scale { margin: 12px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+  @media (max-width: 760px) {
+    .two { grid-template-columns: 1fr; }
+    .two .sheet { margin-bottom: 0; }
+    .tools { grid-template-columns: 1fr; }
+    .strip { grid-template-columns: repeat(25, 1fr); }
+    h1 { font-size: 1.6rem; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Student Grade Management System</h1>
+  <p class="lead">A class register for up to 100 students. Marks for English, Mathematics and Science are stored in arrays, and every action on this page is a loop over those arrays.</p>
+
+  <section class="sheet" aria-labelledby="array-title">
+    <h2 id="array-title">The array</h2>
+    <div class="strip" id="strip" aria-hidden="true"></div>
+    <p id="slots" aria-live="polite"></p>
+    <p class="hint">Each square is one slot (index 0 to 99). Filled squares hold a student. Hover a square to see its index.</p>
+  </section>
+
+  <div class="two stack">
+    <section class="sheet" aria-labelledby="add-title">
+      <h2 id="add-title">Add a student</h2>
+      <form id="addForm" novalidate>
+        <div class="field">
+          <label for="name">Student name</label>
+          <input id="name" type="text" maxlength="40" autocomplete="off">
+        </div>
+        <div class="marks">
+          <div class="field">
+            <label for="m0">English</label>
+            <input id="m0" type="number" min="0" max="100" step="0.5" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="m1">Mathematics</label>
+            <input id="m1" type="number" min="0" max="100" step="0.5" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="m2">Science</label>
+            <input id="m2" type="number" min="0" max="100" step="0.5" inputmode="decimal">
+          </div>
+        </div>
+        <button type="submit">Add student</button>
+        <p id="msg" role="status"></p>
+      </form>
+    </section>
+
+    <section class="sheet" aria-labelledby="stats-title">
+      <h2 id="stats-title">Class summary</h2>
+      <dl id="stats"></dl>
+    </section>
+  </div>
+
+  <section class="sheet register" aria-labelledby="reg-title">
+    <h2 id="reg-title">Register</h2>
+    <div class="tools">
+      <div>
+        <label for="search">Search by name</label>
+        <input id="search" type="search" autocomplete="off">
+      </div>
+      <div>
+        <label for="view">Show students</label>
+        <select id="view">
+          <option value="entry">In entry order</option>
+          <option value="rank">By rank</option>
+        </select>
+      </div>
+    </div>
+    <div class="buttons">
+      <button type="button" class="plain" id="sampleBtn">Load sample data</button>
+      <button type="button" class="danger" id="clearBtn">Clear all</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Name</th>
+            <th>English</th>
+            <th>Mathematics</th>
+            <th>Science</th>
+            <th>Total</th>
+            <th>Average</th>
+            <th class="grade">Grade</th>
+            <th><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="scale">Grades: A is 80 and above, B 70 to 79, C 60 to 69, D 50 to 59, F below 50. Rank 1 is the highest average; equal averages share a rank.</p>
+  </section>
+</div>
+
+<style>
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+</style>
+
+<script>
+  // ---------- The data: two fixed-size arrays, same design as the C++ version ----------
+  const MAX_STUDENTS = 100;
+  const SUBJECTS = ["English", "Mathematics", "Science"];
+
+  const names = new Array(MAX_STUDENTS).fill("");   // names[i]    = name in slot i
+  const marks = [];                                  // marks[i][s] = mark of student i in subject s
+  for (let i = 0; i < MAX_STUDENTS; i++) marks.push(new Array(SUBJECTS.length).fill(0));
+  let studentCount = 0;                              // slots currently in use
+
+  const STORE_KEY = "gradeSystem.v1";
+
+  // ---------- Calculations ----------
+  function totalOf(i) {
+    let total = 0;
+    for (let s = 0; s < SUBJECTS.length; s++) total += marks[i][s];
+    return total;
+  }
+  function averageOf(i) { return totalOf(i) / SUBJECTS.length; }
+  function gradeOf(avg) {
+    if (avg >= 80) return "A";
+    if (avg >= 70) return "B";
+    if (avg >= 60) return "C";
+    if (avg >= 50) return "D";
+    return "F";
+  }
+
+  // Linear search: slot of the student with this exact name, or -1
+  function findStudent(name) {
+    const key = name.trim().toLowerCase();
+    for (let i = 0; i < studentCount; i++) {
+      if (names[i].toLowerCase() === key) return i;
+    }
+    return -1;
+  }
+
+  function addStudent(name, m) {
+    if (studentCount >= MAX_STUDENTS) return false;
+    names[studentCount] = name;
+    for (let s = 0; s < SUBJECTS.length; s++) marks[studentCount][s] = m[s];
+    studentCount++;
+    return true;
+  }
+
+  // Close the gap: move every later student one slot to the left
+  function deleteStudent(index) {
+    for (let i = index; i < studentCount - 1; i++) {
+      names[i] = names[i + 1];
+      for (let s = 0; s < SUBJECTS.length; s++) marks[i][s] = marks[i + 1][s];
+    }
+    studentCount--;
+    names[studentCount] = "";
+    for (let s = 0; s < SUBJECTS.length; s++) marks[studentCount][s] = 0;
+  }
+
+  // Bubble sort on an array of slot numbers, so names/marks stay in entry order
+  function rankOrder() {
+    const order = [];
+    for (let i = 0; i < studentCount; i++) order.push(i);
+    for (let pass = 0; pass < studentCount - 1; pass++) {
+      for (let k = 0; k < studentCount - 1 - pass; k++) {
+        if (averageOf(order[k]) < averageOf(order[k + 1])) {
+          const temp = order[k];
+          order[k] = order[k + 1];
+          order[k + 1] = temp;
+        }
+      }
+    }
+    return order;
+  }
+
+  // ---------- Saving in this browser ----------
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify({
+        n: names.slice(0, studentCount),
+        m: marks.slice(0, studentCount)
+      }));
+    } catch (e) { /* storage unavailable: the page still works without saving */ }
+  }
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+      if (!saved || !Array.isArray(saved.n) || !Array.isArray(saved.m)) return;
+      if (saved.n.length > MAX_STUDENTS || saved.n.length !== saved.m.length) return;
+      for (let i = 0; i < saved.n.length; i++) {
+        const row = saved.m[i];
+        if (typeof saved.n[i] !== "string" || !Array.isArray(row) || row.length !== SUBJECTS.length) return;
+        for (let s = 0; s < SUBJECTS.length; s++) {
+          if (typeof row[s] !== "number" || !(row[s] >= 0 && row[s] <= 100)) return;
+        }
+      }
+      for (let i = 0; i < saved.n.length; i++) addStudent(saved.n[i], saved.m[i]);
+    } catch (e) { /* ignore unreadable saved data */ }
+  }
+
+  // ---------- Screen ----------
+  const $ = (id) => document.getElementById(id);
+
+  function cell(text, className) {
+    const td = document.createElement("td");
+    td.textContent = text;
+    if (className) td.className = className;
+    return td;
+  }
+
+  function setMessage(text, kind) {
+    const msg = $("msg");
+    msg.textContent = text;
+    msg.className = kind || "";
+  }
+
+  function renderStrip() {
+    const strip = $("strip");
+    if (!strip.children.length) {
+      for (let i = 0; i < MAX_STUDENTS; i++) strip.appendChild(document.createElement("span"));
+    }
+    for (let i = 0; i < MAX_STUDENTS; i++) {
+      const box = strip.children[i];
+      const used = i < studentCount;
+      box.className = used ? "used" : "";
+      box.title = used ? "Index " + i + ": " + names[i] : "Index " + i + ": empty";
+    }
+    $("slots").textContent = studentCount + " of " + MAX_STUDENTS + " slots used";
+  }
+
+  function renderStats() {
+    const dl = $("stats");
+    dl.textContent = "";
+    function row(label, value) {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+
+    row("Students", studentCount + " of " + MAX_STUDENTS);
+    if (studentCount === 0) {
+      row("Class average", "none yet");
+      return;
+    }
+
+    const subjectTotal = new Array(SUBJECTS.length).fill(0);
+    let classTotal = 0, best = 0, worst = 0;
+    for (let i = 0; i < studentCount; i++) {
+      for (let s = 0; s < SUBJECTS.length; s++) subjectTotal[s] += marks[i][s];
+      classTotal += averageOf(i);
+      if (averageOf(i) > averageOf(best)) best = i;
+      if (averageOf(i) < averageOf(worst)) worst = i;
+    }
+
+    row("Class average", (classTotal / studentCount).toFixed(1));
+    for (let s = 0; s < SUBJECTS.length; s++) {
+      row(SUBJECTS[s] + " average", (subjectTotal[s] / studentCount).toFixed(1));
+    }
+    row("Highest average", names[best] + " (" + averageOf(best).toFixed(1) + ")");
+    row("Lowest average", names[worst] + " (" + averageOf(worst).toFixed(1) + ")");
+  }
+
+  function renderTable() {
+    const body = $("rows");
+    body.textContent = "";
+
+    if (studentCount === 0) {
+      const tr = document.createElement("tr");
+      const td = cell("No students yet. Add one above or load the sample data.", "empty");
+      td.colSpan = 9;
+      tr.appendChild(td);
+      body.appendChild(tr);
+      return;
+    }
+
+    // Work out the rank of every slot (equal averages share a rank)
+    const order = rankOrder();
+    const rankOf = new Array(MAX_STUDENTS).fill(0);
+    let rank = 1;
+    for (let k = 0; k < order.length; k++) {
+      if (k > 0 && averageOf(order[k]) !== averageOf(order[k - 1])) rank = k + 1;
+      rankOf[order[k]] = rank;
+    }
+
+    const sequence = [];
+    if ($("view").value === "rank") {
+      for (let k = 0; k < order.length; k++) sequence.push(order[k]);
+    } else {
+      for (let i = 0; i < studentCount; i++) sequence.push(i);
+    }
+
+    const query = $("search").value.trim().toLowerCase();
+    let shown = 0;
+    for (let k = 0; k < sequence.length; k++) {
+      const i = sequence[k];
+      if (query && names[i].toLowerCase().indexOf(query) === -1) continue;
+      shown++;
+
+      const avg = averageOf(i);
+      const grade = gradeOf(avg);
+      const tr = document.createElement("tr");
+      tr.appendChild(cell(rankOf[i]));
+      tr.appendChild(cell(names[i]));
+      for (let s = 0; s < SUBJECTS.length; s++) tr.appendChild(cell(marks[i][s]));
+      tr.appendChild(cell(totalOf(i).toFixed(1)));
+      tr.appendChild(cell(avg.toFixed(1)));
+      tr.appendChild(cell(grade, "grade" + (grade === "F" ? " low" : "")));
+
+      const action = document.createElement("td");
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "danger small";
+      del.textContent = "Delete";
+      del.dataset.index = i;
+      del.setAttribute("aria-label", "Delete " + names[i]);
+      action.appendChild(del);
+      tr.appendChild(action);
+      body.appendChild(tr);
+    }
+
+    if (shown === 0) {
+      const tr = document.createElement("tr");
+      const td = cell('No student matches "' + $("search").value.trim() + '".', "empty");
+      td.colSpan = 9;
+      tr.appendChild(td);
+      body.appendChild(tr);
+    }
+  }
+
+  function render() {
+    renderStrip();
+    renderStats();
+    renderTable();
+  }
+
+  // ---------- Events ----------
+  $("addForm").addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    const name = $("name").value.trim();
+    if (!name) {
+      setMessage("Enter the student's name.", "error");
+      $("name").focus();
+      return;
+    }
+    if (findStudent(name) !== -1) {
+      setMessage(name + " is already in the register.", "error");
+      $("name").focus();
+      return;
+    }
+
+    const m = [];
+    for (let s = 0; s < SUBJECTS.length; s++) {
+      const value = $("m" + s).valueAsNumber;
+      if (!(value >= 0 && value <= 100)) {
+        setMessage("Enter a mark between 0 and 100 for " + SUBJECTS[s] + ".", "error");
+        $("m" + s).focus();
+        return;
+      }
+      m.push(value);
+    }
+
+    if (!addStudent(name, m)) {
+      setMessage("The register is full. Delete a student to free a slot.", "error");
+      return;
+    }
+    save();
+    render();
+    $("addForm").reset();
+    $("name").focus();
+    setMessage("Added " + name + " in slot " + studentCount + " of " + MAX_STUDENTS + ".", "ok");
+  });
+
+  $("rows").addEventListener("click", function (event) {
+    const button = event.target.closest("button[data-index]");
+    if (!button) return;
+    const index = Number(button.dataset.index);
+    const removed = names[index];
+    deleteStudent(index);
+    save();
+    render();
+    setMessage("Removed " + removed + ". Students after them moved up one slot.", "ok");
+  });
+
+  $("sampleBtn").addEventListener("click", function () {
+    const sample = [
+      ["Ama Mensah", [78, 85, 72]],
+      ["Kwame Asante", [64, 58, 70]],
+      ["Efua Owusu", [91, 88, 95]],
+      ["Yaw Boateng", [45, 52, 39]],
+      ["Abena Quaye", [67, 74, 81]]
+    ];
+    let added = 0;
+    for (let i = 0; i < sample.length; i++) {
+      if (findStudent(sample[i][0]) === -1 && addStudent(sample[i][0], sample[i][1])) added++;
+    }
+    save();
+    render();
+    setMessage("Loaded " + added + " sample students.", "ok");
+  });
+
+  $("clearBtn").addEventListener("click", function () {
+    if (studentCount === 0) return;
+    if (!confirm("Remove all students from the register?")) return;
+    while (studentCount > 0) deleteStudent(studentCount - 1);
+    save();
+    render();
+    setMessage("Register cleared.", "ok");
+  });
+
+  $("search").addEventListener("input", renderTable);
+  $("view").addEventListener("change", renderTable);
+
+  load();
+  render();
+</script>
+</body>
+</html>
